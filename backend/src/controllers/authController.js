@@ -67,9 +67,18 @@ const connection = async (req, res) => {
     }
 }
 
+const getProfil = (req, res) => {
+    // req.user est fourni par le middleware 'proteger'
+    res.status(200).json({ 
+        message: "Voici votre profil", 
+        utilisateur: req.user 
+    });
+};
+
 
 module.exports = {
     register, 
-    connection
+    connection,
+    getProfil
 }
 
