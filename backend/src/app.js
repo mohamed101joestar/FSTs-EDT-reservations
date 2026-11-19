@@ -4,6 +4,10 @@ const authRoutes = require('./routes/authRoutes');
 const salleRoutes = require('./routes/salleRoutes');
 const creneauRoutes = require('./routes/creneauRoutes');
 const evenementRoutes = require('./routes/evenementRoutes');
+const niveauRoutes = require('./routes/niveauRoutes');    
+const filiereRoutes = require('./routes/filiereRoutes'); 
+const groupeRoutes = require('./routes/groupeRoutes');  
+const moduleRoutes = require('./routes/moduleRoutes'); 
 
 const app = express();
 
@@ -14,6 +18,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/salles', salleRoutes); 
 app.use('/api/creneaux', creneauRoutes);    
 app.use('/api/evenements', evenementRoutes); 
+app.use('/api/niveaux', niveauRoutes);
+app.use('/api/filieres', filiereRoutes);  
+app.use('/api/groupes', groupeRoutes);
+app.use('/api/modules', moduleRoutes);
+
 
 
 // Une route de test simple
