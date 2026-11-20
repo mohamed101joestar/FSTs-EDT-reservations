@@ -8,6 +8,7 @@ const niveauRoutes = require('./routes/niveauRoutes');
 const filiereRoutes = require('./routes/filiereRoutes'); 
 const groupeRoutes = require('./routes/groupeRoutes');  
 const moduleRoutes = require('./routes/moduleRoutes'); 
+const edtRoutes = require('./routes/edtRoutes');
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api/niveaux', niveauRoutes);
 app.use('/api/filieres', filiereRoutes);  
 app.use('/api/groupes', groupeRoutes);
 app.use('/api/modules', moduleRoutes);
+app.use('/api/edts', edtRoutes);
 
 
 
