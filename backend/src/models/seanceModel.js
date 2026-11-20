@@ -56,6 +56,11 @@ const updateSeance = async (id, edt_id, enseignant_id, module_id, salle_id, cren
     }
 };
 
+const getSeanceById = async (id) => {
+    const result = await pool.query('SELECT * FROM seance WHERE id = $1', [id]);
+    return result.rows[0];
+};
+
 const getSeancesByEdt = async (edt_id) => {
     const query = `
         SELECT s.id, s.edt_id, s.enseignant_id, s.module_id, s.salle_id, s.creneau_id, s.evenement_id,
@@ -73,7 +78,17 @@ const getSeancesByEdt = async (edt_id) => {
         LEFT JOIN groupe g ON sg.groupe_id = g.id
         WHERE s.edt_id = $1
         GROUP BY s.id, m.nom_module, u.nom, u.prenom, sa.nom_salle, c.jour, c.heure_debut, c.heure_fin, ev.libelle
-        ORDER BY c.jour, c.heure_debut ASC
+        ORDER BY 
+            CASE c.jour 
+                WHEN 'lundi' THEN 1 
+                WHEN 'mardi' THEN 2 
+                WHEN 'mercredi' THEN 3 
+                WHEN 'jeudi' THEN 4 
+                WHEN 'vendredi' THEN 5 
+                WHEN 'samedi' THEN 6 
+                ELSE 7 
+            END,
+            c.heure_debut ASC
     `;
     const result = await pool.query(query, [edt_id]);
     return result.rows;
@@ -84,4 +99,4 @@ const deleteSeance = async (id) => {
     return result.rows[0];
 };
 
-module.exports = { createSeance, updateSeance, getSeancesByEdt, deleteSeance };
+module.exports = { createSeance, updateSeance, getSeanceById, getSeancesByEdt, deleteSeance };
