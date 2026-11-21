@@ -23,4 +23,14 @@ const checkDateOverlap = (c1, c2, edt1, edt2) => {
     return c1.jour === c2.jour;
 };
 
-module.exports = { checkTimeOverlap, checkDateOverlap, getJourFromDate };
+// Date du jour (heure locale) au format YYYY-MM-DD
+const aujourdHui = () => new Date().toLocaleDateString('fr-CA');
+
+// Vrai si la chaîne est une vraie date calendaire au format YYYY-MM-DD (refuse 2026-02-30, "abc"...)
+const estDateValide = (s) => {
+    if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const d = new Date(`${s}T12:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
+
+module.exports = { checkTimeOverlap, checkDateOverlap, getJourFromDate, aujourdHui, estDateValide };

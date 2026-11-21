@@ -68,6 +68,9 @@ const seed = async () => {
     ids.d1214b = await creneau('2026-12-14', 'lundi', '09:00', '11:00');
     ids.d1221 = await creneau('2026-12-21', 'lundi', '08:00', '10:00');
     ids.dHors = await creneau('2027-03-01', 'lundi', '08:00', '10:00');
+    ids.d1215 = await creneau('2026-12-15', 'mardi', '08:00', '10:00');
+    ids.d1216 = await creneau('2026-12-16', 'mercredi', '08:00', '10:00');
+    ids.dPasse = await creneau('2026-10-05', 'lundi', '08:00', '10:00'); // avant le "jour J" figé (21/11/2026)
 
     const edt = (titre, semestre, debut, fin, filiere) =>
         insert('INSERT INTO edt (titre, annee_universitaire, semestre, date_debut, date_fin, filiere_id) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -80,4 +83,15 @@ const seed = async () => {
     return ids;
 };
 
-module.exports = { pool, resetDb, seed, tokenFor };
+// Date du jour figée pour les tests qui dépendent de "aujourd'hui" (réservations, demandes de changement).
+// Seul Date est simulé : les créneaux du seed (décembre 2026) restent dans le futur quelle que soit
+// la date réelle d'exécution. Utilisation : beforeAll(() => jest.useFakeTimers(FAKE_TIMERS)).
+const NOW = new Date('2026-11-21T10:00:00');
+const FAKE_TIMERS = {
+    now: NOW,
+    doNotFake: ['hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame',
+        'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback', 'setImmediate',
+        'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'],
+};
+
+module.exports = { pool, resetDb, seed, tokenFor, FAKE_TIMERS, NOW };

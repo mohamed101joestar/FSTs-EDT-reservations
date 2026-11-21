@@ -1,10 +1,7 @@
 const pool = require('../config/db');
-const { checkTimeOverlap, checkDateOverlap } =  require('../utils/timeUtils')
+const { trouverConflit, messageConflit } = require('./disponibiliteService');
 
 const erreur = (status, message) => ({ status, message });
-
-const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
-const getJourFromDate = (dateStr) => JOURS[new Date(`${dateStr}T12:00:00`).getDay()];
 
 const estIdValide = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
 
@@ -73,32 +70,14 @@ const validerToutesLesRegles = async (data, seance_id_a_exclure = null) => {
         return erreur(400, `Capacité insuffisante (${effectifTotal} étudiants pour ${salle.capacite} places).`);
     }
 
-    // 3. Conflits (salle, enseignant, groupes)
-    const excludeId = seance_id_a_exclure ? Number(seance_id_a_exclure) : -1;
-    const resExistantes = await pool.query(`
-        SELECT s.id AS seance_id, s.salle_id, s.enseignant_id,
-               c.date_creneau, c.jour, c.heure_debut, c.heure_fin,
-               e.date_debut AS edt_debut, e.date_fin AS edt_fin
-        FROM seance s
-        JOIN creneau c ON s.creneau_id = c.id
-        JOIN edt e ON s.edt_id = e.id
-        WHERE s.id != $1
-    `, [excludeId]);
-
-    for (const seance of resExistantes.rows) {
-        const edtExistant = { date_debut: seance.edt_debut, date_fin: seance.edt_fin };
-        if (!checkDateOverlap(nouveauCreneau, seance, edtActuel, edtExistant)) continue;
-        if (!checkTimeOverlap(nouveauCreneau, seance)) continue;
-
-        if (seance.salle_id === salle_id) return erreur(409, "Cette salle est déjà occupée sur ce créneau (chevauchement horaire).");
-        if (seance.enseignant_id === enseignant_id) return erreur(409, "Cet enseignant a déjà une séance sur ce créneau (chevauchement horaire).");
-
-        const resGrp = await pool.query(
-            'SELECT 1 FROM seance_groupe WHERE seance_id = $1 AND groupe_id = ANY($2)',
-            [seance.seance_id, groupe_ids]
-        );
-        if (resGrp.rows.length > 0) return erreur(409, "Un des groupes a déjà une séance sur ce créneau (chevauchement horaire).");
-    }
+    // 3. Conflits (salle, enseignant, groupes) avec les séances, les occurrences déplacées
+    //    et les réservations confirmées
+    const conflit = await trouverConflit({
+        enseignant_id, salle_id, groupe_ids,
+        creneau: nouveauCreneau,
+        periode: { date_debut: edtActuel.date_debut, date_fin: edtActuel.date_fin },
+    }, { exclureSeanceId: seance_id_a_exclure });
+    if (conflit) return erreur(409, messageConflit(conflit));
 
     return null;
 };
