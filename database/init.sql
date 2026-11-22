@@ -174,7 +174,7 @@ CREATE TABLE demande_changement (
                          CHECK (statut IN ('en_attente', 'acceptee', 'refusee')),
     motif_refus          VARCHAR(255),
     date_traitement      TIMESTAMP,
-    seance_id            INT NOT NULL REFERENCES seance(id),
+    seance_id            INT NOT NULL REFERENCES seance(id) ON DELETE CASCADE,
     enseignant_id        INT NOT NULL REFERENCES utilisateur(id),
     admin_id             INT REFERENCES utilisateur(id),
     nouveau_creneau_id   INT REFERENCES creneau(id),
