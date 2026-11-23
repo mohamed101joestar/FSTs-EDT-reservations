@@ -1,4 +1,5 @@
 const edtModel = require('../models/edtModel');
+const conflitService = require('../services/conflitService');
 
 // Traduit les erreurs PostgreSQL courantes en réponses claires
 const reponseErreur = (error, res, messageParDefaut) => {
@@ -45,6 +46,7 @@ const supprimerEdt = async (req, res) => {
 
         const edtSupprime = await edtModel.deleteEdt(id);
         if (!edtSupprime) return res.status(404).json({ message: "EDT non trouvé." });
+        await conflitService.recalculerConflitsSansErreur();
         res.status(200).json({ message: "EDT supprimé." });
     } catch (error) {
         reponseErreur(error, res, "Erreur lors de la suppression.");

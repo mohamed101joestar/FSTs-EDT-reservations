@@ -11,6 +11,7 @@ const moduleRoutes = require('./routes/moduleRoutes');
 const edtRoutes = require('./routes/edtRoutes');
 const reservationRoutes = require('./routes/reservationRoutes');
 const demandeChangementRoutes = require('./routes/demandeChangementRoutes');
+const conflitRoutes = require('./routes/conflitRoutes');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use('/api/modules', moduleRoutes);
 app.use('/api/edts', edtRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/demandes-changement', demandeChangementRoutes);
+app.use('/api/conflits', conflitRoutes);
 
 
 

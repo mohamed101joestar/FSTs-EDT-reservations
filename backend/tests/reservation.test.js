@@ -186,17 +186,32 @@ describe('Réservations - Traitement Admin', () => {
         expect(res.body.reservation.statut).toBe('rejetee');
     });
 
-    test('conflit au moment de la confirmation → 409', async () => {
+    test('confirmer une réservation refuse automatiquement celle qui visait la même place', async () => {
         // 2 demandes en attente pour la même salle/créneau
         const resa1 = await creerResa();
         const resa2 = await creerResa({ groupe_id: ids.g2 });
 
-        // Confirmer la 1ère
-        await traiter(resa1.id, { statut: 'confirmee' });
+        const conf = await traiter(resa1.id, { statut: 'confirmee' });
+        expect(conf.status).toBe(200);
+        expect(conf.body.refusees).toEqual([{ type: 'reservation', id: resa2.id }]);
 
-        // Tenter de confirmer la 2ème
-        const res = await traiter(resa2.id, { statut: 'confirmee' });
+        const ligne = (await pool.query('SELECT statut, motif_rejet, admin_id FROM reservation WHERE id = $1', [resa2.id])).rows[0];
+        expect(ligne.statut).toBe('rejetee');
+        expect(ligne.motif_rejet).toMatch(/Conflit/);
+        expect(ligne.admin_id).toBe(ids.admin);
+
+        // la 2ème est déjà traitée
+        expect((await traiter(resa2.id, { statut: 'confirmee' })).status).toBe(400);
+    });
+
+    test('confirmation impossible si un cours a pris la place entre-temps → 409', async () => {
+        const resa = await creerResa();
+        await request(app).post(`/api/edts/${ids.s1}/seances`).set(auth(adminToken)).send({
+            enseignant_id: ids.ens2, module_id: ids.m1, salle_id: ids.salleA, creneau_id: ids.d1214, evenement_id: ids.cours, groupe_ids: [ids.g2]
+        });
+        const res = await traiter(resa.id, { statut: 'confirmee' });
         expect(res.status).toBe(409);
+        expect(res.body.message).toMatch(/Impossible de confirmer/);
     });
 
     test('traiter avec un id non numérique → 400', async () => {
@@ -303,18 +318,15 @@ describe('Réservations - conflits avec les réservations confirmées', () => {
         expect(res.status).toBe(201);
     });
 
-    test('confirmation refusée si chevauchement partiel avec une réservation déjà confirmée → 409', async () => {
+    test('chevauchement partiel : confirmer l’une refuse automatiquement l’autre', async () => {
         const resa1 = await creerResa();
-        const resa2 = await (async () => {
-            const r = await demander(nouvelleResa({ creneau_id: ids.d1214b, groupe_id: ids.g2 }), ens2Token());
-            expect(r.status).toBe(201);
-            return r.body.reservation;
-        })();
-        expect((await traiter(resa1.id, { statut: 'confirmee' })).status).toBe(200);
+        const r2 = await demander(nouvelleResa({ creneau_id: ids.d1214b, groupe_id: ids.g2 }), ens2Token());
+        expect(r2.status).toBe(201);
 
-        const res = await traiter(resa2.id, { statut: 'confirmee' });
-        expect(res.status).toBe(409);
-        expect(res.body.message).toMatch(/confirmer/i);
+        const conf = await traiter(resa1.id, { statut: 'confirmee' });
+        expect(conf.status).toBe(200);
+        expect(conf.body.refusees).toEqual([{ type: 'reservation', id: r2.body.reservation.id }]);
+        expect((await traiter(r2.body.reservation.id, { statut: 'confirmee' })).status).toBe(400);
     });
 
     test('une réservation annulée libère le créneau', async () => {

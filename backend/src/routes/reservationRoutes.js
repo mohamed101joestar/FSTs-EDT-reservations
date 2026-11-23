@@ -18,4 +18,7 @@ router.put('/:id/annuler', autoriserRoles('enseignant'), resaController.annulerR
 // Seul l'admin peut traiter
 router.put('/:id/traiter', autoriserRoles('admin'), resaController.traiterReservation);
 
+// L'admin propose une alternative (autre salle / autre créneau) : validée et confirmée directement
+router.put('/:id/reaffecter', autoriserRoles('admin'), resaController.reaffecterReservation);
+
 module.exports = router;

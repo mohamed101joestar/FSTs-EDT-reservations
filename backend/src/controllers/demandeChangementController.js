@@ -1,7 +1,10 @@
 const demandeModel = require('../models/demandeChangementModel');
 const demandeService = require('../services/demandeChangementService');
+const conflitService = require('../services/conflitService');
 
 const STATUTS = ['en_attente', 'acceptee', 'refusee'];
+const estIdValide = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
+const estAbsent = (v) => v === undefined || v === null || v === '';
 
 const reponseErreurSql = (error, res) => {
     if (error.code === '23503') return res.status(400).json({ message: "Un des IDs fournis n'existe pas." });
@@ -20,6 +23,7 @@ const demanderChangement = async (req, res) => {
         if (erreur) return res.status(erreur.status).json({ message: erreur.message });
 
         const demande = await demandeModel.createDemande(prep.demande);
+        await conflitService.recalculerConflitsSansErreur();
         res.status(201).json({ message: "Demande de changement envoyée.", demande });
     } catch (error) {
         reponseErreurSql(error, res);
@@ -38,6 +42,25 @@ const listerDemandes = async (req, res) => {
     } catch (error) {
         reponseErreurSql(error, res);
     }
+};
+
+// Accepte une demande (éventuellement réaffectée par l'admin) et refuse, dans la même transaction,
+// les demandes en attente qui se disputaient la même place.
+const accepterAvecConcurrents = async (demande, seance, modifs, admin_id) => {
+    const definitif = demande.type_demande === 'deplacement_definitif';
+    const nouveauCreneauId = modifs ? modifs.nouveau_creneau_id : demande.nouveau_creneau_id;
+    const nouvelleSalleId = modifs ? modifs.nouvelle_salle_id : demande.nouvelle_salle_id;
+    const nouveauCreneau = nouveauCreneauId ? await demandeModel.getCreneau(nouveauCreneauId) : null;
+    const occupation = conflitService.occupationDemandeDepuis(
+        { ...demande, nouveau_creneau_id: nouveauCreneauId, nouvelle_salle_id: nouvelleSalleId }, seance, nouveauCreneau);
+
+    return conflitService.accepterEnRefusantConcurrents(
+        occupation,
+        (client) => definitif
+            ? demandeModel.accepterDemandeDefinitive(demande.id, admin_id, seance.id,
+                nouveauCreneauId || seance.creneau_id, nouvelleSalleId || seance.salle_id, modifs, client)
+            : demandeModel.accepterDemandePonctuelle(demande.id, admin_id, modifs, client),
+        admin_id);
 };
 
 const traiterDemande = async (req, res) => {
@@ -65,6 +88,7 @@ const traiterDemande = async (req, res) => {
         }
 
         let resultat;
+        let refusees = [];
         if (statut === 'refusee') {
             resultat = await demandeModel.refuserDemande(id, motif_refus.trim(), req.user.id);
         } else {
@@ -72,20 +96,70 @@ const traiterDemande = async (req, res) => {
             const seance = await demandeModel.getSeanceDetails(demande.seance_id);
             const erreur = await demandeService.verifierFaisabilite(demande, seance);
             if (erreur) return res.status(409).json({ message: `Impossible d'accepter : ${erreur.message}` });
-
-            resultat = demande.type_demande === 'deplacement_definitif'
-                ? await demandeModel.accepterDemandeDefinitive(
-                    id, req.user.id, demande.seance_id,
-                    demande.nouveau_creneau_id || seance.creneau_id,
-                    demande.nouvelle_salle_id || seance.salle_id)
-                : await demandeModel.accepterDemandePonctuelle(id, req.user.id);
+            ({ resultat, refusees } = await accepterAvecConcurrents(demande, seance, null, req.user.id));
         }
 
         if (!resultat) return res.status(409).json({ message: "Cette demande vient d'être traitée par un autre administrateur." });
-        res.status(200).json({ message: `Demande ${statut}.`, demande: resultat });
+        await conflitService.recalculerConflitsSansErreur();
+        res.status(200).json({ message: `Demande ${statut}.`, demande: resultat, refusees });
     } catch (error) {
         reponseErreurSql(error, res);
     }
 };
 
-module.exports = { demanderChangement, listerDemandes, traiterDemande };
+// L'admin propose une alternative (autre créneau et/ou autre salle) : elle est validée tout de suite
+// et la demande est acceptée directement.
+const reaffecterDemande = async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id)) return res.status(400).json({ message: "Identifiant de demande invalide." });
+
+        const { nouveau_creneau_id, nouvelle_salle_id } = req.body || {};
+        if (estAbsent(nouveau_creneau_id) && estAbsent(nouvelle_salle_id)) {
+            return res.status(400).json({ message: "Indiquez un nouveau créneau (nouveau_creneau_id) et/ou une nouvelle salle (nouvelle_salle_id)." });
+        }
+
+        const demande = await demandeModel.getDemandeById(id);
+        if (!demande) return res.status(404).json({ message: "Demande introuvable." });
+        if (demande.statut !== 'en_attente') {
+            return res.status(400).json({ message: "Cette demande a déjà été traitée." });
+        }
+        if (demande.type_demande === 'annulation_ponctuelle') {
+            return res.status(400).json({ message: "Une annulation n'a pas de destination à réaffecter." });
+        }
+
+        const modifs = {
+            nouveau_creneau_id: estAbsent(nouveau_creneau_id) ? demande.nouveau_creneau_id : nouveau_creneau_id,
+            nouvelle_salle_id: estAbsent(nouvelle_salle_id) ? demande.nouvelle_salle_id : nouvelle_salle_id,
+        };
+
+        // Mêmes contrôles qu'à la création, comme si l'enseignant avait demandé cette destination
+        const prep = await demandeService.preparerDemande({
+            type_demande: demande.type_demande, seance_id: demande.seance_id,
+            date_occurrence: demande.date_occurrence, motif: demande.motif, ...modifs,
+        }, demande.enseignant_id, { exclureDemandeId: id });
+        if (prep.erreur) return res.status(prep.erreur.status).json({ message: `Réaffectation impossible : ${prep.erreur.message}` });
+
+        const memeDestination = prep.demande.nouveau_creneau_id === (demande.nouveau_creneau_id ? Number(demande.nouveau_creneau_id) : null)
+            && prep.demande.nouvelle_salle_id === (demande.nouvelle_salle_id ? Number(demande.nouvelle_salle_id) : null);
+        if (memeDestination) {
+            return res.status(400).json({ message: "Aucun changement : utilisez /traiter pour accepter cette demande telle quelle." });
+        }
+
+        const erreur = await demandeService.verifierFaisabilite(prep.demande, prep.seance);
+        if (erreur) return res.status(erreur.status).json({ message: `Réaffectation impossible : ${erreur.message}` });
+
+        const { resultat, refusees } = await accepterAvecConcurrents(
+            demande, prep.seance,
+            { nouveau_creneau_id: prep.demande.nouveau_creneau_id, nouvelle_salle_id: prep.demande.nouvelle_salle_id },
+            req.user.id);
+        if (!resultat) return res.status(409).json({ message: "Cette demande vient d'être traitée par un autre administrateur." });
+
+        await conflitService.recalculerConflitsSansErreur();
+        res.status(200).json({ message: "Demande réaffectée et acceptée.", demande: resultat, refusees });
+    } catch (error) {
+        reponseErreurSql(error, res);
+    }
+};
+
+module.exports = { demanderChangement, listerDemandes, traiterDemande, reaffecterDemande };

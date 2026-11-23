@@ -22,7 +22,7 @@ const PERIODE_LARGE = { date_debut: '2000-01-01', date_fin: '2100-12-31' };
  *   2. les occurrences déplacées (déplacement ponctuel accepté) à leur nouvelle place
  *   3. les réservations confirmées
  *
- * Retourne null, ou { ressource: 'salle'|'enseignant'|'groupe', source: 'cours'|'deplacement'|'reservation' }
+ * Retourne null, ou { ressource: 'salle'|'enseignant'|'groupe', ressource_id, source: 'cours'|'deplacement'|'reservation' }
  */
 const trouverConflit = async (candidat, options = {}) => {
     const salle_id = Number(candidat.salle_id);
@@ -31,9 +31,10 @@ const trouverConflit = async (candidat, options = {}) => {
     const exclure = options.exclureSeanceId ? Number(options.exclureSeanceId) : null;
 
     const ressourceEnConflit = (occ) => {
-        if (Number(occ.salle_id) === salle_id) return 'salle';
-        if (Number(occ.enseignant_id) === enseignant_id) return 'enseignant';
-        if ((occ.groupe_ids || []).some((g) => groupe_ids.includes(Number(g)))) return 'groupe';
+        if (Number(occ.salle_id) === salle_id) return { ressource: 'salle', id: salle_id };
+        if (Number(occ.enseignant_id) === enseignant_id) return { ressource: 'enseignant', id: enseignant_id };
+        const g = (occ.groupe_ids || []).map(Number).find((x) => groupe_ids.includes(x));
+        if (g !== undefined) return { ressource: 'groupe', id: g };
         return null;
     };
 
@@ -88,8 +89,8 @@ const trouverConflit = async (candidat, options = {}) => {
         const dates = liberees.get(Number(s.seance_id));
         if (dateCommune && dates && dates.has(dateCommune)) continue;
 
-        const ressource = ressourceEnConflit(occ);
-        if (ressource) return { ressource, source: 'cours' };
+        const r = ressourceEnConflit(occ);
+        if (r) return { ressource: r.ressource, ressource_id: r.id, source: 'cours' };
     }
 
     // ---- 2. Occurrences déplacées (déplacement ponctuel accepté) ----
@@ -117,8 +118,8 @@ const trouverConflit = async (candidat, options = {}) => {
             periode: PERIODE_LARGE,
         };
         if (!seChevauchent(occ)) continue;
-        const ressource = ressourceEnConflit(occ);
-        if (ressource) return { ressource, source: 'deplacement' };
+        const r = ressourceEnConflit(occ);
+        if (r) return { ressource: r.ressource, ressource_id: r.id, source: 'deplacement' };
     }
 
     // ---- 3. Réservations confirmées ----
@@ -131,16 +132,16 @@ const trouverConflit = async (candidat, options = {}) => {
           AND (r.salle_id = $1 OR r.enseignant_id = $2 OR r.groupe_id = ANY($3::int[]))
     `, [salle_id, enseignant_id, groupe_ids]);
 
-    for (const r of resResas.rows) {
+    for (const resa of resResas.rows) {
         const occ = {
-            salle_id: r.salle_id, enseignant_id: r.enseignant_id,
-            groupe_ids: r.groupe_id ? [r.groupe_id] : [],
-            creneau: { date_creneau: r.date_creneau, jour: r.jour, heure_debut: r.heure_debut, heure_fin: r.heure_fin },
+            salle_id: resa.salle_id, enseignant_id: resa.enseignant_id,
+            groupe_ids: resa.groupe_id ? [resa.groupe_id] : [],
+            creneau: { date_creneau: resa.date_creneau, jour: resa.jour, heure_debut: resa.heure_debut, heure_fin: resa.heure_fin },
             periode: PERIODE_LARGE,
         };
         if (!seChevauchent(occ)) continue;
-        const ressource = ressourceEnConflit(occ);
-        if (ressource) return { ressource, source: 'reservation' };
+        const r = ressourceEnConflit(occ);
+        if (r) return { ressource: r.ressource, ressource_id: r.id, source: 'reservation' };
     }
 
     return null;
