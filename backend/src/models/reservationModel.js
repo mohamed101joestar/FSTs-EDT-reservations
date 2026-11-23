@@ -33,13 +33,29 @@ const getReservationById = async (id) => {
     return res.rows[0];
 };
 
-const updateStatutReservation = async (id, statut, motif_rejet, admin_id) => {
+// executor : pool par défaut, ou un client de transaction. Gardé par statut = 'en_attente' : null si déjà traitée.
+const updateStatutReservation = async (id, statut, motif_rejet, admin_id, executor = pool) => {
     const query = `
         UPDATE reservation 
         SET statut = $1, motif_rejet = $2, admin_id = $3, date_traitement = NOW()
-        WHERE id = $4 RETURNING *
+        WHERE id = $4 AND statut = 'en_attente' RETURNING *
     `;
-    const res = await pool.query(query, [statut, motif_rejet, admin_id, id]);
+    const res = await executor.query(query, [statut, motif_rejet, admin_id, id]);
+    return res.rows[0] || null;
+};
+
+// L'admin change la salle et/ou le créneau d'une demande en attente ET la confirme directement
+const reaffecterEtConfirmer = async (id, salle_id, creneau_id, admin_id, executor = pool) => {
+    const res = await executor.query(`
+        UPDATE reservation
+        SET salle_id = $1, creneau_id = $2, statut = 'confirmee', motif_rejet = NULL, admin_id = $3, date_traitement = NOW()
+        WHERE id = $4 AND statut = 'en_attente' RETURNING *
+    `, [salle_id, creneau_id, admin_id, id]);
+    return res.rows[0] || null;
+};
+
+const getCreneau = async (id) => {
+    const res = await pool.query('SELECT id, date_creneau, jour, heure_debut, heure_fin FROM creneau WHERE id = $1', [id]);
     return res.rows[0];
 };
 
@@ -58,5 +74,7 @@ module.exports = {
     getAllReservations, 
     getReservationById, 
     updateStatutReservation,
+    reaffecterEtConfirmer,
+    getCreneau,
     annulerReservation
 };

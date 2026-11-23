@@ -15,4 +15,7 @@ router.get('/', demandeController.listerDemandes);
 // Seul l'admin traite
 router.put('/:id/traiter', autoriserRoles('admin'), demandeController.traiterDemande);
 
+// L'admin propose une alternative (autre créneau / autre salle) : validée et acceptée directement
+router.put('/:id/reaffecter', autoriserRoles('admin'), demandeController.reaffecterDemande);
+
 module.exports = router;

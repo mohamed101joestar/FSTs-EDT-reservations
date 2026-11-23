@@ -1,6 +1,7 @@
 const seanceModel = require('../models/seanceModel');
 const seanceService = require('../services/seanceService');
 const edtModel = require('../models/edtModel');
+const conflitService = require('../services/conflitService');
 
 const MSG_CHAMPS = "Tous les champs sont obligatoires (enseignant_id, module_id, salle_id, creneau_id, evenement_id) et groupe_ids doit être un tableau non vide d'identifiants.";
 
@@ -27,7 +28,10 @@ const ajouterSeance = async (req, res) => {
         const nouvelleSeance = await seanceModel.createSeance(
             edtId, d.enseignant_id, d.module_id, d.salle_id, d.creneau_id, d.evenement_id, d.groupe_ids
         );
-        res.status(201).json({ message: "Séance ajoutée", seance: nouvelleSeance });
+        // Les demandes en attente qui visaient cette place sont désormais bloquées : on les signale à l'admin
+        const demandes_en_conflit = await conflitService.impactDeSeance(nouvelleSeance.id);
+        await conflitService.recalculerConflitsSansErreur();
+        res.status(201).json({ message: "Séance ajoutée", seance: nouvelleSeance, demandes_en_conflit });
     } catch (error) {
         reponseErreurSql(error, res);
     }
@@ -56,7 +60,9 @@ const modifierSeance = async (req, res) => {
         const seanceMiseAJour = await seanceModel.updateSeance(
             id, edtId, d.enseignant_id, d.module_id, d.salle_id, d.creneau_id, d.evenement_id, d.groupe_ids
         );
-        res.status(200).json({ message: "Séance mise à jour", seance: seanceMiseAJour });
+        const demandes_en_conflit = await conflitService.impactDeSeance(id);
+        await conflitService.recalculerConflitsSansErreur();
+        res.status(200).json({ message: "Séance mise à jour", seance: seanceMiseAJour, demandes_en_conflit });
     } catch (error) {
         reponseErreurSql(error, res);
     }
@@ -86,6 +92,7 @@ const supprimerSeance = async (req, res) => {
         if (!seance || seance.edt_id !== edtId) return res.status(404).json({ message: "Séance non trouvée dans cet EDT." });
 
         await seanceModel.deleteSeance(id);
+        await conflitService.recalculerConflitsSansErreur();
         res.status(200).json({ message: "Séance supprimée." });
     } catch (error) {
         reponseErreurSql(error, res);

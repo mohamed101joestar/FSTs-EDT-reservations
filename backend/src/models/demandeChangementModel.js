@@ -59,21 +59,23 @@ const getSeanceDetails = async (seance_id) => {
 };
 
 // Une demande ponctuelle déjà en attente ou acceptée pour cette occurrence ?
-const existeDemandePonctuelleActive = async (seance_id, date_occurrence) => {
+const existeDemandePonctuelleActive = async (seance_id, date_occurrence, exclureDemandeId = null) => {
     const res = await pool.query(`
         SELECT 1 FROM demande_changement
         WHERE seance_id = $1 AND date_occurrence = $2
           AND type_demande IN ('annulation_ponctuelle', 'deplacement_ponctuel')
           AND statut IN ('en_attente', 'acceptee')
-    `, [seance_id, date_occurrence]);
+          AND ($3::int IS NULL OR id <> $3)
+    `, [seance_id, date_occurrence, exclureDemandeId]);
     return res.rows.length > 0;
 };
 
-const existeDemandeDefinitiveEnAttente = async (seance_id) => {
+const existeDemandeDefinitiveEnAttente = async (seance_id, exclureDemandeId = null) => {
     const res = await pool.query(`
         SELECT 1 FROM demande_changement
         WHERE seance_id = $1 AND type_demande = 'deplacement_definitif' AND statut = 'en_attente'
-    `, [seance_id]);
+          AND ($2::int IS NULL OR id <> $2)
+    `, [seance_id, exclureDemandeId]);
     return res.rows.length > 0;
 };
 
@@ -98,42 +100,38 @@ const refuserDemande = async (id, motif_refus, admin_id) => {
     return res.rows[0] || null;
 };
 
-const accepterDemandePonctuelle = async (id, admin_id) => {
-    const res = await pool.query(`
-        UPDATE demande_changement
-        SET statut = 'acceptee', admin_id = $1, date_traitement = NOW()
-        WHERE id = $2 AND statut = 'en_attente' RETURNING *
-    `, [admin_id, id]);
-    return res.rows[0] || null;
-};
-
-// Déplacement définitif : la séance ET le statut de la demande changent dans UNE transaction.
-const accepterDemandeDefinitive = async (id, admin_id, seance_id, creneau_id, salle_id) => {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const res = await client.query(`
+// executor : pool par défaut, ou un client de transaction.
+// modifs (facultatif) : { nouveau_creneau_id, nouvelle_salle_id } = l'admin réaffecte la demande en l'acceptant.
+const accepterDemandePonctuelle = async (id, admin_id, modifs = null, executor = pool) => {
+    const res = modifs
+        ? await executor.query(`
+            UPDATE demande_changement
+            SET statut = 'acceptee', admin_id = $1, date_traitement = NOW(), nouveau_creneau_id = $3, nouvelle_salle_id = $4
+            WHERE id = $2 AND statut = 'en_attente' RETURNING *
+        `, [admin_id, id, modifs.nouveau_creneau_id, modifs.nouvelle_salle_id])
+        : await executor.query(`
             UPDATE demande_changement
             SET statut = 'acceptee', admin_id = $1, date_traitement = NOW()
             WHERE id = $2 AND statut = 'en_attente' RETURNING *
         `, [admin_id, id]);
-        if (res.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return null;
-        }
-        await client.query('UPDATE seance SET creneau_id = $1, salle_id = $2 WHERE id = $3', [creneau_id, salle_id, seance_id]);
-        await client.query('COMMIT');
-        return res.rows[0];
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
+    return res.rows[0] || null;
+};
+
+// Déplacement définitif : la demande ET la séance changent. À appeler avec un client de transaction.
+const accepterDemandeDefinitive = async (id, admin_id, seance_id, creneau_id, salle_id, modifs = null, executor = pool) => {
+    const demande = await accepterDemandePonctuelle(id, admin_id, modifs, executor);
+    if (!demande) return null;
+    await executor.query('UPDATE seance SET creneau_id = $1, salle_id = $2 WHERE id = $3', [creneau_id, salle_id, seance_id]);
+    return demande;
+};
+
+const getCreneau = async (id) => {
+    const res = await pool.query('SELECT id, date_creneau, jour, heure_debut, heure_fin FROM creneau WHERE id = $1', [id]);
+    return res.rows[0];
 };
 
 module.exports = {
     createDemande, getDemandeById, getAllDemandes, getSeanceDetails,
     existeDemandePonctuelleActive, existeDemandeDefinitiveEnAttente, aDesChangementsPonctuelsAVenir,
-    refuserDemande, accepterDemandePonctuelle, accepterDemandeDefinitive,
+    refuserDemande, accepterDemandePonctuelle, accepterDemandeDefinitive, getCreneau,
 };

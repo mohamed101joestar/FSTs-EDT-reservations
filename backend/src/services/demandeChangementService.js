@@ -24,10 +24,14 @@ const estOccurrenceDeLaSeance = (seance, date) => {
 
 /**
  * Contrôles de forme + règles propres à la CRÉATION d'une demande.
+ * options.exclureDemandeId : ignorer cette demande dans les vérifications de doublons
+ *                            (utilisé lors d'une réaffectation par l'admin).
  * Retourne { erreur } ou { demande, seance } (demande prête à être insérée).
  */
-const preparerDemande = async (body, enseignant_id) => {
+const preparerDemande = async (body, enseignant_id, options = {}) => {
+    const exclureDemandeId = options.exclureDemandeId || null;
     const { type_demande } = body;
+
     if (!TYPES.includes(type_demande)) {
         return { erreur: erreur(400, "type_demande invalide (annulation_ponctuelle, deplacement_ponctuel ou deplacement_definitif).") };
     }
@@ -77,7 +81,8 @@ const preparerDemande = async (body, enseignant_id) => {
             return { erreur: erreur(400, `Cette date n'est pas un jour de cours de la séance (attendu : ${attendu}).`) };
         }
         demande.date_occurrence = date;
-        if (await demandeModel.existeDemandePonctuelleActive(seance.id, date)) {
+        // CORRECTION : on exclut la demande en cours de modification
+        if (await demandeModel.existeDemandePonctuelleActive(seance.id, date, exclureDemandeId)) {
             return { erreur: erreur(409, "Une demande est déjà en attente ou acceptée pour cette occurrence de la séance.") };
         }
     }
@@ -132,7 +137,8 @@ const preparerDemande = async (body, enseignant_id) => {
         if (memeCreneau && memeSalle) {
             return { erreur: erreur(400, "Le déplacement demandé est identique à la situation actuelle.") };
         }
-        if (await demandeModel.existeDemandeDefinitiveEnAttente(seance.id)) {
+        // CORRECTION : on exclut la demande en cours de modification
+        if (await demandeModel.existeDemandeDefinitiveEnAttente(seance.id, exclureDemandeId)) {
             return { erreur: erreur(409, "Une demande de déplacement définitif est déjà en attente pour cette séance.") };
         }
     }

@@ -661,10 +661,10 @@ describe('Demandes - traitement par l’admin', () => {
     });
 
     describe('revérification à l’acceptation (le planning a pu changer)', () => {
-        test('définitif : une réservation confirmée occupe entre-temps le nouveau créneau → 409, rien ne change', async () => {
+        test('définitif : un cours occupe entre-temps le nouveau créneau → 409, rien ne change', async () => {
             const s = await creerSeance();
             const d = await creer(depDefinitif(s));
-            await reservationConfirmee({ creneau_id: ids.d1215 });
+            await creerSeance({ enseignant_id: ids.ens2, creneau_id: ids.mar8, groupe_ids: [ids.g2] }); // Salle A mardi 8h
 
             const res = await traiter(d.id, { statut: 'acceptee' });
             expect(res.status).toBe(409);
