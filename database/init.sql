@@ -39,7 +39,7 @@ CREATE TABLE utilisateur (
     nom           VARCHAR(50)  NOT NULL,
     prenom        VARCHAR(50)  NOT NULL,
     email         VARCHAR(100) NOT NULL UNIQUE,
-    mot_de_passe  VARCHAR(255) NOT NULL,           -- hash bcrypt, jamais en clair
+    mot_de_passe  VARCHAR(255) NOT NULL,
     role          VARCHAR(10)  NOT NULL
                   CHECK (role IN ('admin', 'enseignant'))
 );
@@ -56,7 +56,7 @@ CREATE TABLE historique (
     id               INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     action           VARCHAR(50) NOT NULL,
     entite_concernee VARCHAR(50) NOT NULL,
-    id_entite        INT         NOT NULL,          -- référence logique (pas de FK : table variable)
+    id_entite        INT         NOT NULL,
     ancienne_valeur  TEXT,
     nouvelle_valeur  TEXT,
     date_action      TIMESTAMP   NOT NULL DEFAULT NOW(),
@@ -91,12 +91,12 @@ CREATE TABLE equipement (
 
 CREATE TABLE evenement (
     id       INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    libelle  VARCHAR(50) NOT NULL UNIQUE            -- ex : Cours, TD, TP, Examen, Réunion
+    libelle  VARCHAR(50) NOT NULL UNIQUE
 );
 
 CREATE TABLE creneau (
     id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    date_creneau  DATE,                             -- NULL = créneau hebdomadaire récurrent
+    date_creneau  DATE,
     jour          VARCHAR(10) NOT NULL
                   CHECK (jour IN ('lundi', 'mardi', 'mercredi', 'jeudi',
                                   'vendredi', 'samedi', 'dimanche')),
@@ -155,8 +155,6 @@ CREATE TABLE reservation (
     admin_id        INT REFERENCES utilisateur(id)
 );
 
--- Règle métier : une salle ne peut avoir qu'UNE réservation confirmée par créneau.
--- Plusieurs demandes « en_attente » peuvent coexister sur la même salle et le même créneau.
 CREATE UNIQUE INDEX uq_reservation_confirmee
     ON reservation (salle_id, creneau_id)
     WHERE statut = 'confirmee';
@@ -168,20 +166,19 @@ CREATE TABLE demande_changement (
                          CHECK (type_demande IN ('annulation_ponctuelle',
                                                  'deplacement_ponctuel',
                                                  'deplacement_definitif')),
-    date_occurrence      DATE,                       -- séance concernée (changements ponctuels)
+    date_occurrence      DATE,
     motif                VARCHAR(255),
     statut               VARCHAR(15) NOT NULL DEFAULT 'en_attente'
                          CHECK (statut IN ('en_attente', 'acceptee', 'refusee')),
     motif_refus          VARCHAR(255),
     date_traitement      TIMESTAMP,
+    -- MODIFICATION : ON DELETE CASCADE
     seance_id            INT NOT NULL REFERENCES seance(id) ON DELETE CASCADE,
     enseignant_id        INT NOT NULL REFERENCES utilisateur(id),
     admin_id             INT REFERENCES utilisateur(id),
     nouveau_creneau_id   INT REFERENCES creneau(id),
     nouvelle_salle_id    INT REFERENCES salle(id),
-    -- un changement ponctuel doit préciser quelle occurrence est visée
     CHECK (type_demande = 'deplacement_definitif' OR date_occurrence IS NOT NULL),
-    -- un déplacement doit proposer un nouveau créneau et/ou une nouvelle salle
     CHECK (type_demande = 'annulation_ponctuelle'
            OR nouveau_creneau_id IS NOT NULL
            OR nouvelle_salle_id IS NOT NULL)
@@ -194,11 +191,21 @@ CREATE TABLE conflit (
     date_detection         TIMESTAMP   NOT NULL DEFAULT NOW(),
     statut                 VARCHAR(10) NOT NULL DEFAULT 'ouvert'
                            CHECK (statut IN ('ouvert', 'resolu')),
-    demande_changement_id  INT REFERENCES demande_changement(id)
+    -- MODIFICATION : Ajout de description
+    description            VARCHAR(255),
+    -- MODIFICATION : ON DELETE CASCADE
+    demande_changement_id  INT REFERENCES demande_changement(id) ON DELETE CASCADE
 );
 
 CREATE TABLE conflit_reservation (
     conflit_id      INT NOT NULL REFERENCES conflit(id) ON DELETE CASCADE,
     reservation_id  INT NOT NULL REFERENCES reservation(id),
     PRIMARY KEY (conflit_id, reservation_id)
+);
+
+-- MODIFICATION : Nouvelle table conflit_demande
+CREATE TABLE conflit_demande (
+    conflit_id             INT NOT NULL REFERENCES conflit(id) ON DELETE CASCADE,
+    demande_changement_id  INT NOT NULL REFERENCES demande_changement(id) ON DELETE CASCADE,
+    PRIMARY KEY (conflit_id, demande_changement_id)
 );

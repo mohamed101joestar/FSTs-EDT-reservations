@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const userModel = require('../models/Usermodel');
+const userModel = require('../models/usermodel');
+const activite = require('../services/activiteService');
 
 // --- INSCRIPTION ---
 const register = async (req, res) => {
@@ -13,6 +14,7 @@ const register = async (req, res) => {
 
         const HashedPassword = await bcrypt.hash(mot_de_passe, 10);
         const newUser = await userModel.createUser(nom, prenom, email, HashedPassword, role || 'enseignant');
+        await activite.inscription(newUser);
         res.status(201).json({ 
             message: "Utilisateur créé avec succès", 
             user: newUser });
@@ -41,6 +43,7 @@ const connection = async (req, res) => {
 
         const validePassword = await bcrypt.compare(mot_de_passe, user.mot_de_passe);
         if(!validePassword) {
+            await activite.echecConnexion(user.id);
             return res.status(401).json({message: "Email ou mot de passe incorrect"});
         }
         const token = jwt.sign(
@@ -49,6 +52,7 @@ const connection = async (req, res) => {
         { expiresIn: '24h' }  
         );
 
+        await activite.connexion(user.id);
         res.status(200).json({
         message: "Connexion réussie",
         token,

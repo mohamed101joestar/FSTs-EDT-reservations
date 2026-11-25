@@ -1,3 +1,4 @@
+const activite = require('../services/activiteService');
 const creneauModel = require('../models/creneauModel');
 
 const ajouterCreneau = async (req, res) => {
@@ -9,6 +10,7 @@ const ajouterCreneau = async (req, res) => {
         }
 
         const nouveauCreneau = await creneauModel.createCreneau(date_creneau, jour, heure_debut, heure_fin);
+        await activite.creation('creneau', nouveauCreneau, req.user.id);
         res.status(201).json({ message: "Créneau créé", creneau: nouveauCreneau });
     } catch (error) {
         if (error.code === '23505') {
@@ -33,6 +35,7 @@ const supprimerCreneau = async (req, res) => {
         const { id } = req.params;
         const creneauSupprime = await creneauModel.deleteCreneau(id);
         if (!creneauSupprime) return res.status(404).json({ message: "Créneau non trouvé." });
+        await activite.suppression('creneau', creneauSupprime, req.user.id);
         res.status(200).json({ message: "Créneau supprimé." });
     } catch (error) {
         if (error.code === '23503') return res.status(400).json({ message: "Impossible de supprimer : ce créneau est utilisé dans une séance." });

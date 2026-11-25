@@ -1,3 +1,4 @@
+const activite = require('../services/activiteService');
 const moduleModel = require('../models/moduleModel');
 
 const ajouterModule = async (req, res) => {
@@ -6,6 +7,7 @@ const ajouterModule = async (req, res) => {
         if (!nom_module || !code_module) return res.status(400).json({ message: "nom_module et code_module sont obligatoires." });
 
         const nouveauModule = await moduleModel.createModule(nom_module, code_module);
+        await activite.creation('module', nouveauModule, req.user.id);
         res.status(201).json({ message: "Module créé", module: nouveauModule });
     } catch (error) {
         if (error.code === '23505') return res.status(400).json({ message: "Ce code module existe déjà." });
@@ -27,6 +29,7 @@ const supprimerModule = async (req, res) => {
         const { id } = req.params;
         const moduleSupprime = await moduleModel.deleteModule(id);
         if (!moduleSupprime) return res.status(404).json({ message: "Module non trouvé." });
+        await activite.suppression('module', moduleSupprime, req.user.id);
         res.status(200).json({ message: "Module supprimé." });
     } catch (error) {
         if (error.code === '23503') return res.status(400).json({ message: "Impossible de supprimer : ce module est utilisé dans une séance." });

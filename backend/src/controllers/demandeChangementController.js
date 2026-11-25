@@ -1,6 +1,7 @@
 const demandeModel = require('../models/demandeChangementModel');
 const demandeService = require('../services/demandeChangementService');
 const conflitService = require('../services/conflitService');
+const activite = require('../services/activiteService');
 
 const STATUTS = ['en_attente', 'acceptee', 'refusee'];
 const estIdValide = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
@@ -23,6 +24,7 @@ const demanderChangement = async (req, res) => {
         if (erreur) return res.status(erreur.status).json({ message: erreur.message });
 
         const demande = await demandeModel.createDemande(prep.demande);
+        await activite.demandeCreee(demande.id, req.user.id);
         await conflitService.recalculerConflitsSansErreur();
         res.status(201).json({ message: "Demande de changement envoyée.", demande });
     } catch (error) {
@@ -46,7 +48,7 @@ const listerDemandes = async (req, res) => {
 
 // Accepte une demande (éventuellement réaffectée par l'admin) et refuse, dans la même transaction,
 // les demandes en attente qui se disputaient la même place.
-const accepterAvecConcurrents = async (demande, seance, modifs, admin_id) => {
+const accepterAvecConcurrents = async (demande, seance, modifs, admin_id, reaffectee = false) => {
     const definitif = demande.type_demande === 'deplacement_definitif';
     const nouveauCreneauId = modifs ? modifs.nouveau_creneau_id : demande.nouveau_creneau_id;
     const nouvelleSalleId = modifs ? modifs.nouvelle_salle_id : demande.nouvelle_salle_id;
@@ -60,7 +62,8 @@ const accepterAvecConcurrents = async (demande, seance, modifs, admin_id) => {
             ? demandeModel.accepterDemandeDefinitive(demande.id, admin_id, seance.id,
                 nouveauCreneauId || seance.creneau_id, nouvelleSalleId || seance.salle_id, modifs, client)
             : demandeModel.accepterDemandePonctuelle(demande.id, admin_id, modifs, client),
-        admin_id);
+        admin_id, undefined,
+        (client, { refusees: detail }) => activite.demandeAcceptee(demande, seance, admin_id, detail, reaffectee, client));
 };
 
 const traiterDemande = async (req, res) => {
@@ -91,6 +94,7 @@ const traiterDemande = async (req, res) => {
         let refusees = [];
         if (statut === 'refusee') {
             resultat = await demandeModel.refuserDemande(id, motif_refus.trim(), req.user.id);
+            if (resultat) await activite.demandeRefusee(id, motif_refus.trim(), req.user.id);
         } else {
             // Le planning a pu changer depuis la demande : on revérifie tout avant d'accepter.
             const seance = await demandeModel.getSeanceDetails(demande.seance_id);
@@ -152,7 +156,7 @@ const reaffecterDemande = async (req, res) => {
         const { resultat, refusees } = await accepterAvecConcurrents(
             demande, prep.seance,
             { nouveau_creneau_id: prep.demande.nouveau_creneau_id, nouvelle_salle_id: prep.demande.nouvelle_salle_id },
-            req.user.id);
+            req.user.id, true);
         if (!resultat) return res.status(409).json({ message: "Cette demande vient d'être traitée par un autre administrateur." });
 
         await conflitService.recalculerConflitsSansErreur();

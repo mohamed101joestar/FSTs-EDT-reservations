@@ -16,6 +16,11 @@ const getEquipementsBySalle = async (salle_id) => {
     return result.rows;
 };
 
+const getEquipementById = async (id) => {
+    const result = await pool.query('SELECT * FROM equipement WHERE id = $1', [id]);
+    return result.rows[0];
+};
+
 const updateEquipement = async (id, nom_equipement) => {
     const query = `
         UPDATE equipement 
@@ -33,6 +38,7 @@ const deleteEquipement = async (id) => {
 };
 
 module.exports = {
+    getEquipementById,
     createEquipement,
     getEquipementsBySalle,
     updateEquipement,

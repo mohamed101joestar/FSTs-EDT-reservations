@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { checkTimeOverlap, checkDateOverlap, getJourFromDate, aujourdHui } = require('../utils/timeUtils');
 const { trouverConflit, PERIODE_LARGE } = require('./disponibiliteService');
 const demandeModel = require('../models/demandeChangementModel');
+const { notifierAdmins } = require('./notificationService');
 
 /*
  * GESTION DES CONFLITS
@@ -316,6 +317,7 @@ const recalculerConflits = async () => {
                 "INSERT INTO conflit (type_conflit, statut, description) VALUES ($1, 'ouvert', $2) RETURNING id",
                 [c.type, c.description]);
             await ecrireMembres(ins.rows[0].id, c);
+            await notifierAdmins(`Nouveau conflit : ${c.description}`, client);
         }
         await client.query('COMMIT');
     } catch (error) {
@@ -341,11 +343,13 @@ const refuserConcurrent = async (client, concurrent, motif, admin_id) => {
     const res = concurrent.type === 'reservation'
         ? await client.query(`
             UPDATE reservation SET statut = 'rejetee', motif_rejet = $1, admin_id = $2, date_traitement = NOW()
-            WHERE id = $3 AND statut = 'en_attente' RETURNING id`, [motif, admin_id, concurrent.id])
+            WHERE id = $3 AND statut = 'en_attente' RETURNING id, enseignant_id`, [motif, admin_id, concurrent.id])
         : await client.query(`
             UPDATE demande_changement SET statut = 'refusee', motif_refus = $1, admin_id = $2, date_traitement = NOW()
-            WHERE id = $3 AND statut = 'en_attente' RETURNING id`, [motif, admin_id, concurrent.id]);
-    return res.rows.length > 0;
+            WHERE id = $3 AND statut = 'en_attente' RETURNING id, enseignant_id`, [motif, admin_id, concurrent.id]);
+    return res.rows.length > 0
+        ? { type: concurrent.type, id: concurrent.id, enseignant_id: res.rows[0].enseignant_id }
+        : null;
 };
 
 const libelleOccupation = (occ) => (occ.type === 'reservation' ? `la réservation n°${occ.id}` : `la demande de changement n°${occ.id}`);
@@ -355,9 +359,11 @@ const libelleOccupation = (occ) => (occ.type === 'reservation' ? `la réservatio
  * qui se disputaient la même place.
  *   occupation          : place prise par la demande acceptée (null pour une annulation : rien à refuser)
  *   appliquerAcceptation: async (client) => ligne mise à jour, ou null si déjà traitée
+ *   surDecision         : (facultatif) async (client, { resultat, refusees }) => ... exécuté DANS la transaction
+ *                         (historique et notifications : si elles échouent, tout est annulé)
  * Retourne { resultat, refusees: [{ type, id }] }
  */
-const accepterEnRefusantConcurrents = async (occupation, appliquerAcceptation, admin_id, libelleAcceptee) => {
+const accepterEnRefusantConcurrents = async (occupation, appliquerAcceptation, admin_id, libelleAcceptee, surDecision = null) => {
     const concurrents = occupation ? await trouverConcurrents(occupation) : [];
     const client = await pool.connect();
     try {
@@ -368,12 +374,14 @@ const accepterEnRefusantConcurrents = async (occupation, appliquerAcceptation, a
             return { resultat: null, refusees: [] };
         }
         const motif = `Conflit : la place a été attribuée à ${libelleAcceptee || (occupation ? libelleOccupation(occupation) : 'une autre demande')}.`;
-        const refusees = [];
+        const detail = [];
         for (const c of concurrents) {
-            if (await refuserConcurrent(client, c, motif, admin_id)) refusees.push({ type: c.type, id: c.id });
+            const refusee = await refuserConcurrent(client, c, motif, admin_id);
+            if (refusee) detail.push({ ...refusee, motif });
         }
+        if (surDecision) await surDecision(client, { resultat, refusees: detail });
         await client.query('COMMIT');
-        return { resultat, refusees };
+        return { resultat, refusees: detail.map(({ type, id }) => ({ type, id })) };
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
