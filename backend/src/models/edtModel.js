@@ -26,9 +26,18 @@ const getEdtById = async (id) => {
     return result.rows[0];
 };
 
+// Ce que la suppression d'un EDT va emporter : ses séances et les enseignants concernés
+const getResumeEdt = async (id) => {
+    const seances = await pool.query('SELECT id FROM seance WHERE edt_id = $1 ORDER BY id', [id]);
+    const enseignants = await pool.query(
+        'SELECT enseignant_id, COUNT(*)::int AS nb FROM seance WHERE edt_id = $1 GROUP BY enseignant_id', [id]);
+    return { seances: seances.rows.map((r) => r.id), enseignants: enseignants.rows };
+};
+
 const deleteEdt = async (id) => {
     const result = await pool.query('DELETE FROM edt WHERE id = $1 RETURNING *', [id]);
     return result.rows[0];
 };
 
-module.exports = { createEdt, getAllEdts, getEdtById, deleteEdt };
+module.exports = {
+    getResumeEdt, createEdt, getAllEdts, getEdtById, deleteEdt };

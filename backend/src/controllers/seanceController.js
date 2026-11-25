@@ -2,6 +2,7 @@ const seanceModel = require('../models/seanceModel');
 const seanceService = require('../services/seanceService');
 const edtModel = require('../models/edtModel');
 const conflitService = require('../services/conflitService');
+const activite = require('../services/activiteService');
 
 const MSG_CHAMPS = "Tous les champs sont obligatoires (enseignant_id, module_id, salle_id, creneau_id, evenement_id) et groupe_ids doit être un tableau non vide d'identifiants.";
 
@@ -28,6 +29,7 @@ const ajouterSeance = async (req, res) => {
         const nouvelleSeance = await seanceModel.createSeance(
             edtId, d.enseignant_id, d.module_id, d.salle_id, d.creneau_id, d.evenement_id, d.groupe_ids
         );
+        await activite.seanceCreee(nouvelleSeance.id, req.user.id);
         // Les demandes en attente qui visaient cette place sont désormais bloquées : on les signale à l'admin
         const demandes_en_conflit = await conflitService.impactDeSeance(nouvelleSeance.id);
         await conflitService.recalculerConflitsSansErreur();
@@ -57,9 +59,11 @@ const modifierSeance = async (req, res) => {
         const erreur = await seanceService.validerToutesLesRegles({ edt_id: edtId, ...d }, id);
         if (erreur) return res.status(erreur.status).json({ message: erreur.message });
 
+        const avant = await activite.lireSeance(id); // état de la séance avant modification (historique + notifications)
         const seanceMiseAJour = await seanceModel.updateSeance(
             id, edtId, d.enseignant_id, d.module_id, d.salle_id, d.creneau_id, d.evenement_id, d.groupe_ids
         );
+        await activite.seanceModifiee(avant, req.user.id);
         const demandes_en_conflit = await conflitService.impactDeSeance(id);
         await conflitService.recalculerConflitsSansErreur();
         res.status(200).json({ message: "Séance mise à jour", seance: seanceMiseAJour, demandes_en_conflit });
@@ -91,7 +95,9 @@ const supprimerSeance = async (req, res) => {
         const seance = await seanceModel.getSeanceById(id);
         if (!seance || seance.edt_id !== edtId) return res.status(404).json({ message: "Séance non trouvée dans cet EDT." });
 
+        const avant = await activite.lireSeance(id); // état de la séance avant suppression
         await seanceModel.deleteSeance(id);
+        await activite.seanceSupprimee(avant, req.user.id);
         await conflitService.recalculerConflitsSansErreur();
         res.status(200).json({ message: "Séance supprimée." });
     } catch (error) {

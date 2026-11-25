@@ -1,3 +1,4 @@
+const activite = require('../services/activiteService');
 const niveauModel = require('../models/niveauModel');
 
 const ajouterNiveau = async (req, res) => {
@@ -6,6 +7,7 @@ const ajouterNiveau = async (req, res) => {
         if (!libelle || !code_niveau) return res.status(400).json({ message: "libelle et code_niveau sont obligatoires." });
 
         const nouveauNiveau = await niveauModel.createNiveau(libelle, code_niveau);
+        await activite.creation('niveau', nouveauNiveau, req.user.id);
         res.status(201).json({ message: "Niveau créé", niveau: nouveauNiveau });
     } catch (error) {
         if (error.code === '23505') return res.status(400).json({ message: "Ce code niveau existe déjà." });
@@ -27,6 +29,7 @@ const supprimerNiveau = async (req, res) => {
         const { id } = req.params;
         const niveauSupprime = await niveauModel.deleteNiveau(id);
         if (!niveauSupprime) return res.status(404).json({ message: "Niveau non trouvé." });
+        await activite.suppression('niveau', niveauSupprime, req.user.id);
         res.status(200).json({ message: "Niveau supprimé." });
     } catch (error) {
         if (error.code === '23503') return res.status(400).json({ message: "Impossible de supprimer : ce niveau est utilisé par une filière." });

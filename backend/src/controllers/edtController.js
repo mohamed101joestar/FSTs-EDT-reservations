@@ -1,5 +1,6 @@
 const edtModel = require('../models/edtModel');
 const conflitService = require('../services/conflitService');
+const activite = require('../services/activiteService');
 
 // Traduit les erreurs PostgreSQL courantes en réponses claires
 const reponseErreur = (error, res, messageParDefaut) => {
@@ -24,6 +25,7 @@ const ajouterEdt = async (req, res) => {
             return res.status(400).json({ message: "Tous les champs sont obligatoires." });
         }
         const nouvelEdt = await edtModel.createEdt(titre, annee_universitaire, semestre, date_debut, date_fin, filiere_id);
+        await activite.creation('edt', nouvelEdt, req.user.id);
         res.status(201).json({ message: "EDT créé", edt: nouvelEdt });
     } catch (error) {
         reponseErreur(error, res, "Erreur lors de la création de l'EDT.");
@@ -44,8 +46,10 @@ const supprimerEdt = async (req, res) => {
         const id = Number(req.params.id);
         if (!Number.isInteger(id)) return res.status(400).json({ message: "Identifiant d'EDT invalide." });
 
+        const resume = await edtModel.getResumeEdt(id); // ce que la suppression va emporter (séances, enseignants)
         const edtSupprime = await edtModel.deleteEdt(id);
         if (!edtSupprime) return res.status(404).json({ message: "EDT non trouvé." });
+        await activite.edtSupprime(edtSupprime, resume, req.user.id);
         await conflitService.recalculerConflitsSansErreur();
         res.status(200).json({ message: "EDT supprimé." });
     } catch (error) {

@@ -1,3 +1,4 @@
+const activite = require('../services/activiteService');
 const groupeModel = require('../models/groupeModel');
 
 const ajouterGroupe = async (req, res) => {
@@ -8,6 +9,7 @@ const ajouterGroupe = async (req, res) => {
         }
 
         const nouveauGroupe = await groupeModel.createGroupe(nom_groupe, effectif, filiere_id);
+        await activite.creation('groupe', nouveauGroupe, req.user.id);
         res.status(201).json({ message: "Groupe créé", groupe: nouveauGroupe });
     } catch (error) {
         // 23505 = Doublon (ex: deux groupes "G1" dans la même filière)
@@ -32,6 +34,7 @@ const supprimerGroupe = async (req, res) => {
         const { id } = req.params;
         const groupeSupprime = await groupeModel.deleteGroupe(id);
         if (!groupeSupprime) return res.status(404).json({ message: "Groupe non trouvé." });
+        await activite.suppression('groupe', groupeSupprime, req.user.id);
         res.status(200).json({ message: "Groupe supprimé." });
     } catch (error) {
         if (error.code === '23503') return res.status(400).json({ message: "Impossible de supprimer : ce groupe est lié à une séance." });

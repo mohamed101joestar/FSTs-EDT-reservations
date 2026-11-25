@@ -1,6 +1,7 @@
 const reservationModel = require('../models/reservationModel');
 const reservationService = require('../services/reservationService');
 const conflitService = require('../services/conflitService');
+const activite = require('../services/activiteService');
 
 const estIdValide = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
 const estAbsent = (v) => v === undefined || v === null || v === '';
@@ -27,6 +28,7 @@ const demanderReservation = async (req, res) => {
         if (erreur) return res.status(erreur.status).json({ message: erreur.message });
 
         const nouvelleResa = await reservationModel.createReservation(enseignant_id, salle_id, creneau_id, groupe_id, evenement_id);
+        await activite.reservationDemandee(nouvelleResa.id, enseignant_id);
         await conflitService.recalculerConflitsSansErreur();
         res.status(201).json({ message: "Demande de réservation envoyée.", reservation: nouvelleResa });
     } catch (error) {
@@ -72,6 +74,7 @@ const traiterReservation = async (req, res) => {
         if (statut === 'rejetee') {
             const resaMiseAJour = await reservationModel.updateStatutReservation(id, statut, motif_rejet, admin_id);
             if (!resaMiseAJour) return res.status(409).json({ message: "Cette réservation vient d'être traitée par un autre administrateur." });
+            await activite.reservationRejetee(id, motif_rejet, admin_id);
             await conflitService.recalculerConflitsSansErreur();
             return res.status(200).json({ message: `Réservation ${statut}.`, reservation: resaMiseAJour, refusees: [] });
         }
@@ -82,7 +85,8 @@ const traiterReservation = async (req, res) => {
 
         const occupation = await occupationDe(reservation, reservation.salle_id, reservation.creneau_id);
         const { resultat, refusees } = await conflitService.accepterEnRefusantConcurrents(
-            occupation, (client) => reservationModel.updateStatutReservation(id, 'confirmee', null, admin_id, client), admin_id);
+            occupation, (client) => reservationModel.updateStatutReservation(id, 'confirmee', null, admin_id, client), admin_id,
+            undefined, (client, { refusees: detail }) => activite.reservationConfirmee(id, admin_id, detail, client));
         if (!resultat) return res.status(409).json({ message: "Cette réservation vient d'être traitée par un autre administrateur." });
 
         await conflitService.recalculerConflitsSansErreur();
@@ -129,7 +133,8 @@ const reaffecterReservation = async (req, res) => {
         const { resultat, refusees } = await conflitService.accepterEnRefusantConcurrents(
             occupation,
             (client) => reservationModel.reaffecterEtConfirmer(id, nouvelleSalle, nouveauCreneau, req.user.id, client),
-            req.user.id);
+            req.user.id, undefined,
+            (client, { refusees: detail }) => activite.reservationReaffectee(reservation, req.user.id, detail, client));
         if (!resultat) return res.status(409).json({ message: "Cette réservation vient d'être traitée par un autre administrateur." });
 
         await conflitService.recalculerConflitsSansErreur();
@@ -161,6 +166,7 @@ const annulerReservation = async (req, res) => {
         }
 
         const resaAnnulee = await reservationModel.annulerReservation(id);
+        await activite.reservationAnnulee(reservation, enseignant_id);
         await conflitService.recalculerConflitsSansErreur();
         res.status(200).json({ message: "Réservation annulée.", reservation: resaAnnulee });
     } catch (error) {
@@ -169,4 +175,4 @@ const annulerReservation = async (req, res) => {
     }
 };
 
-module.exports = { demanderReservation, listerReservations, traiterReservation, reaffecterReservation, annulerReservation };;
+module.exports = { demanderReservation, listerReservations, traiterReservation, reaffecterReservation, annulerReservation };
