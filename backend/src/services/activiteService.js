@@ -139,6 +139,53 @@ const echecConnexion = (utilisateur_id) => executer(pool, () => journaliser({
     action: 'utilisateur.echec_connexion', entite: 'utilisateur', id_entite: utilisateur_id, utilisateur_id,
 }));
 
+// ---------------------------------------------------------------- Gestion des comptes par l'admin
+// Jamais de mot de passe (ni de hash) dans l'historique.
+
+const instantaneUtilisateur = (u) => ({ id: u.id, nom: u.nom, prenom: u.prenom, email: u.email, role: u.role, actif: u.actif });
+
+const utilisateurCree = (utilisateur, admin_id, executor = pool) => executer(executor, () => journaliser({
+    action: 'utilisateur.cree', entite: 'utilisateur', id_entite: utilisateur.id,
+    nouvelle: instantaneUtilisateur(utilisateur), utilisateur_id: admin_id,
+}, executor));
+
+// Un changement de rôle est une ligne à part (action sensible, facile à retrouver) ; les autres champs une autre ligne.
+const utilisateurModifie = (avant, apres, admin_id, executor = pool) => executer(executor, async () => {
+    if (avant.role !== apres.role) {
+        await journaliser({
+            action: 'utilisateur.role_modifie', entite: 'utilisateur', id_entite: apres.id,
+            ancienne: { role: avant.role }, nouvelle: { role: apres.role }, utilisateur_id: admin_id,
+        }, executor);
+    }
+    const champs = ['nom', 'prenom', 'email'].filter((c) => avant[c] !== apres[c]);
+    if (champs.length > 0) {
+        await journaliser({
+            action: 'utilisateur.modifie', entite: 'utilisateur', id_entite: apres.id,
+            ancienne: Object.fromEntries(champs.map((c) => [c, avant[c]])),
+            nouvelle: Object.fromEntries(champs.map((c) => [c, apres[c]])),
+            utilisateur_id: admin_id,
+        }, executor);
+    }
+});
+
+const utilisateurDesactive = (utilisateur, impact, admin_id, executor = pool) => executer(executor, () => journaliser({
+    action: 'utilisateur.desactive', entite: 'utilisateur', id_entite: utilisateur.id,
+    ancienne: { actif: true }, nouvelle: { actif: false, ...impact }, utilisateur_id: admin_id,
+}, executor));
+
+const utilisateurReactive = (utilisateur, admin_id, executor = pool) => executer(executor, () => journaliser({
+    action: 'utilisateur.reactive', entite: 'utilisateur', id_entite: utilisateur.id,
+    ancienne: { actif: false }, nouvelle: { actif: true }, utilisateur_id: admin_id,
+}, executor));
+
+const motDePasseReinitialise = (utilisateurId, admin_id, executor = pool) => executer(executor, () => journaliser({
+    action: 'utilisateur.mot_de_passe_reinitialise', entite: 'utilisateur', id_entite: utilisateurId, utilisateur_id: admin_id,
+}, executor));
+
+const connexionRefusee = (utilisateur_id) => executer(pool, () => journaliser({
+    action: 'utilisateur.connexion_refusee', entite: 'utilisateur', id_entite: utilisateur_id, utilisateur_id,
+}));
+
 // ---------------------------------------------------------------- Refus automatiques (réservations et demandes)
 
 // refusees : [{ type: 'reservation' | 'demande_changement', id, enseignant_id, motif }]
@@ -346,7 +393,8 @@ const salleModifiee = (ancienne, nouvelle, utilisateur_id, executor = pool) => e
 module.exports = {
     lireSeance, instantaneSeance,
     creation, modification, suppression,
-    inscription, connexion, echecConnexion,
+    inscription, connexion, echecConnexion, connexionRefusee,
+    utilisateurCree, utilisateurModifie, utilisateurDesactive, utilisateurReactive, motDePasseReinitialise,
     reservationDemandee, reservationRejetee, reservationConfirmee, reservationReaffectee, reservationAnnulee,
     demandeCreee, demandeRefusee, demandeAcceptee,
     seanceCreee, seanceModifiee, seanceSupprimee, edtSupprime,
