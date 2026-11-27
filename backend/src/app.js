@@ -14,6 +14,7 @@ const demandeChangementRoutes = require('./routes/demandeChangementRoutes');
 const conflitRoutes = require('./routes/conflitRoutes');
 const historiqueRoutes = require('./routes/historiqueRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const utilisateurRoutes = require('./routes/utilisateurRoutes');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/demandes-changement', demandeChangementRoutes);
 app.use('/api/conflits', conflitRoutes);
 app.use('/api/historique', historiqueRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/utilisateurs', utilisateurRoutes);
 
 
 

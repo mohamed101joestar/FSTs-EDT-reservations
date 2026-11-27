@@ -28,10 +28,11 @@ const validerToutesLesRegles = async (data, seance_id_a_exclure = null) => {
     const { edt_id, enseignant_id, salle_id, creneau_id, groupe_ids } = data;
 
     // 1. Vérifications de base
-    const resUser = await pool.query('SELECT role FROM utilisateur WHERE id = $1', [enseignant_id]);
+    const resUser = await pool.query('SELECT role, actif FROM utilisateur WHERE id = $1', [enseignant_id]);
     if (resUser.rows.length === 0 || resUser.rows[0].role !== 'enseignant') {
         return erreur(400, "L'utilisateur n'est pas un enseignant valide.");
     }
+    if (!resUser.rows[0].actif) return erreur(400, "Cet enseignant est désactivé : confiez la séance à un autre enseignant.");
 
     const resEdt = await pool.query('SELECT date_debut, date_fin, filiere_id FROM edt WHERE id = $1', [edt_id]);
     if (resEdt.rows.length === 0) return erreur(404, "EDT introuvable.");
