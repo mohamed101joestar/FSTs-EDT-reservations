@@ -4,7 +4,7 @@
 @theme {
   --font-sans: "Inter Variable", system-ui, sans-serif;
 
-  /* Couleur principale : à ajuster selon le logo de la FST */
+  /* Bleu principal */
   --color-brand-50: #eef5ff;
   --color-brand-100: #d9e8ff;
   --color-brand-500: #2f6fd6;
@@ -12,6 +12,13 @@
   --color-brand-700: #17479a;
   --color-brand-800: #123a7d;
   --color-brand-900: #0d2a5c;
+
+  /* Jaune d'accent */
+  --color-accent-50: #fffbea;
+  --color-accent-100: #fff3c4;
+  --color-accent-400: #f7c948;
+  --color-accent-500: #f0b429;
+  --color-accent-600: #de911d;
 }
 
 body {
