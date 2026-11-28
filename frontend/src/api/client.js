@@ -11,4 +11,18 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Token expiré ou compte désactivé : on déconnecte (sauf pour le login lui-même)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const estLogin = error.config?.url === '/auth/login'
+    if (error.response?.status === 401 && !estLogin) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
 export default api

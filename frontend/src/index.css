@@ -1,1 +1,19 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@theme {
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+
+  /* Couleur principale : à ajuster selon le logo de la FST */
+  --color-brand-50: #eef5ff;
+  --color-brand-100: #d9e8ff;
+  --color-brand-500: #2f6fd6;
+  --color-brand-600: #1f5bc0;
+  --color-brand-700: #17479a;
+  --color-brand-800: #123a7d;
+  --color-brand-900: #0d2a5c;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+}
