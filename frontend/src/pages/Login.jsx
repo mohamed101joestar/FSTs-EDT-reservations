@@ -59,7 +59,7 @@ export default function Login() {
 
         <div className="relative max-w-md">
           <h1 className="text-4xl font-bold leading-tight">
-            Gestion des salles et des emplois du temps
+            Plateforme Planning
           </h1>
           <p className="mt-4 text-brand-100">
             Faculté des Sciences et Techniques de Settat
